@@ -1,0 +1,112 @@
+/* Layout: white page; a softly shaded ground plane tilted away from the viewer sits in the middle.
+   Floating controls only: sound (top right) and "말 심기" (bottom centre) opening a planting panel.
+   Neutral placeholder look until the real design arrives. */
+:root{
+  --bg:#FFFFFF;
+  --ink:#1F1F1F;
+  --dim:#7A7672;
+  --line:#E4E1DC;
+  --soft:#F5F3EF;
+  --soil:#9C8670;
+  --hole:#3E3024;
+  --bad:#C9452E;
+  --sans:var(--font-noto),"Noto Sans KR","Apple SD Gothic Neo","Malgun Gothic",system-ui,sans-serif;
+  color-scheme: light;
+}
+html,body{height:100%}
+[hidden]{display:none!important}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);overflow:hidden;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
+.scene{position:fixed;inset:0;overflow:hidden;touch-action:none;isolation:isolate;background:var(--bg)}
+.scene canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+#bg{z-index:0}
+#fg{z-index:1500}
+#fx{z-index:1600}
+.scene.shake{animation:shake .24s linear}
+@keyframes shake{25%{transform:translate(-2px,1px)}50%{transform:translate(2px,-1px)}75%{transform:translate(-1px,0)}}
+
+.mute{position:fixed;z-index:3500;top:calc(16px + env(safe-area-inset-top,0px));right:calc(16px + env(safe-area-inset-right,0px));
+  width:40px;height:40px;border-radius:50%;border:1px solid var(--line);background:#fff;color:var(--ink);display:grid;place-items:center;cursor:pointer;padding:0;transition:background .15s}
+.mute:hover{background:var(--soft)}
+.mute svg{width:18px;height:18px}
+.mute .x{display:none}
+.mute[aria-pressed="true"] .x{display:inline}
+.mute[aria-pressed="true"] .waves{display:none}
+.mute:focus-visible{outline:2px solid var(--ink);outline-offset:3px}
+
+.plot{position:absolute;width:0;height:0}
+.clip{position:absolute;bottom:0;overflow:hidden;pointer-events:none}
+.lift{position:absolute;inset:0}
+.plot.sprout .lift{animation:sprout .55s cubic-bezier(.25,1.4,.5,1) both;animation-delay:var(--delay,0ms)}
+@keyframes sprout{from{transform:translateY(var(--sh))}to{transform:translateY(0)}}
+.mdk{position:absolute;left:0;display:block}
+.mdk>.lv,.mdk .body{position:absolute;left:0;top:0;width:100%;height:100%;overflow:visible;pointer-events:none;-webkit-user-drag:none;user-select:none}
+.mound{position:absolute;left:0;top:0;transform:translate(-50%,-50%);border-radius:50%;pointer-events:none;background:var(--soil);transition:opacity .3s}
+.plot.empty .mound{background:radial-gradient(ellipse at 50% 55%,var(--hole) 40%,var(--soil) 85%)}
+.plot.gone{transition:opacity .3s;opacity:0}
+.grab{position:absolute;left:0;transform:translateX(-50%);cursor:grab;touch-action:none;border-radius:40%}
+.grab:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+.plot.empty .grab{pointer-events:none;cursor:default}
+.plot.mine .mound{box-shadow:0 0 0 2px var(--ink)}
+
+.mdk .leaves{transform-box:view-box;transform-origin:60px 69px;animation:sway 2.8s ease-in-out infinite alternate;animation-delay:var(--d,0s)}
+@keyframes sway{from{transform:rotate(-4deg)}to{transform:rotate(4deg)}}
+.mdk.tug .leaves{animation:none;transform:rotate(var(--tilt,0deg)) scaleY(var(--stretch,1))}
+.mdk.out .leaves{animation:none}
+.mdk .f-scream{display:none}
+.mdk.out .f-scream{display:inline}
+.mdk.out .f-tug{display:none}
+.mdk .arm{transform-box:view-box}
+.mdk.out .arm{animation:flap .14s ease-in-out infinite alternate}
+.mdk.out .arm.r{animation-delay:-.07s}
+@keyframes flap{from{transform:rotate(-22deg)}to{transform:rotate(22deg)}}
+
+.held{position:fixed;left:0;top:0;z-index:4000;pointer-events:none;transform-origin:50% 55%;filter:drop-shadow(0 14px 14px rgba(0,0,0,.12))}
+.held .wiggle{width:100%;height:100%;will-change:transform}
+.held .rootbody{position:absolute;inset:0;transform-origin:50% 35%;will-change:transform}
+.held .mdk img.torso{clip-path:inset(0 0 30% 0);transform-origin:50% 60%}
+.held .mdk img.legs{clip-path:inset(68% 0 0 0);transform-origin:50% 69%}
+.held .mdk{position:relative;width:100%;height:100%}
+@keyframes flail{from{rotate:-6deg}to{rotate:6deg}}
+.bubble{position:fixed;left:0;top:0;z-index:4100;pointer-events:none;max-width:min(280px,calc(100vw - 32px));
+  background:#fff;color:var(--ink);border:1px solid var(--line);border-radius:14px;padding:11px 15px;
+  font-family:var(--sans);font-weight:600;font-size:16px;line-height:1.45;box-shadow:0 10px 28px rgba(0,0,0,.12);
+  word-break:keep-all;overflow-wrap:anywhere;transform-origin:var(--tail,50%) 100%}
+.bubble::after{content:"";position:absolute;left:var(--tail,50%);bottom:-7px;width:12px;height:12px;background:#fff;
+  border-right:1px solid var(--line);border-bottom:1px solid var(--line);transform:translateX(-50%) rotate(45deg)}
+.bubble.below{transform-origin:var(--tail,50%) 0}
+.bubble.below::after{bottom:auto;top:-7px;border:0;border-left:1px solid var(--line);border-top:1px solid var(--line)}
+.dirt,.puff{position:fixed;left:0;top:0;z-index:3900;pointer-events:none;border-radius:50%}
+.dirt{background:#A69A8C}
+.puff{background:#fff;border:1px solid var(--line)}
+
+.hint{position:absolute;z-index:2000;pointer-events:none;transform:translate(-50%,-100%);
+  font-size:13px;font-weight:600;color:#fff;background:var(--ink);border-radius:999px;padding:6px 12px;white-space:nowrap;animation:bob 1.2s ease-in-out infinite alternate}
+@keyframes bob{from{translate:0 0}to{translate:0 -5px}}
+.status{position:absolute;z-index:1000;left:50%;top:55%;transform:translate(-50%,-50%);width:min(300px,80vw);text-align:center;pointer-events:none;
+  color:var(--dim);font-size:15px;line-height:1.5;text-wrap:balance}
+
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+.bar{position:fixed;z-index:3500;left:50%;transform:translateX(-50%);bottom:calc(28px + env(safe-area-inset-bottom,0px));width:min(480px,calc(100vw - 32px))}
+.bar input{width:100%;box-sizing:border-box;font-family:var(--sans);font-size:15px;color:var(--ink);background:#fff;border:1px solid var(--line);border-radius:12px;
+  padding:13px 128px 13px 16px;outline:none;box-shadow:0 4px 16px rgba(0,0,0,.06);transition:border-color .15s;-webkit-user-select:text;user-select:text}
+.bar input:focus{border-color:var(--ink)}
+.bar input::placeholder{color:var(--dim)}
+.bar input:disabled{background:var(--soft)}
+.bar .send{position:absolute;right:6px;top:50%;transform:translateY(-50%);height:36px;padding:0 16px;border:0;border-radius:9px;background:var(--ink);color:#fff;font-family:var(--sans);font-size:14px;font-weight:600;cursor:pointer}
+.bar .send:hover{background:#333}
+.bar .send:disabled{opacity:.35;cursor:default}
+.bar .send:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+.bar .count{position:absolute;right:76px;top:50%;transform:translateY(-50%);font-size:12px;color:var(--dim);font-variant-numeric:tabular-nums;pointer-events:none}
+.bar .count.full{color:var(--bad)}
+.toast{position:fixed;z-index:3600;left:50%;bottom:calc(88px + env(safe-area-inset-bottom,0px));transform:translateX(-50%) translateY(6px);opacity:0;
+  transition:opacity .2s,transform .2s;background:var(--ink);color:#fff;border-radius:12px;padding:9px 14px;font-size:14px;
+  width:max-content;max-width:calc(100vw - 32px);text-align:center;pointer-events:none}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.toast.bad{background:var(--bad)}
+
+@media (prefers-reduced-motion:reduce){
+  .mdk .leaves,.mdk.out .leaves,.mdk.out .arm,.held .wiggle,.hint{animation:none}
+  .scene.shake{animation:none}
+  .plot.sprout .lift{animation-duration:.01s}
+}

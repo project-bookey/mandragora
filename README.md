@@ -1,35 +1,56 @@
-# 만드라고라 농장
+# 만드라고라
 
-텍스트로 말을 심고, 누군가가 만드라고라를 뽑으면 그 말을 읽는 익명의 공유 농장.
+흰 바탕에 만드라고라가 잔뜩 심겨 있는 원페이지 웹사이트입니다.
+잎을 잡고 위로 당기면 만드라고라가 뽑히면서 누군가 입력해 둔 말을 외치고, 손을 놓으면 사라집니다.
+아래 입력창에 쓴 말은 공유 저장소에 쌓이고, 다음 방문자들의 만드라고라에서 무작위로 나옵니다.
 
-운영 경로: https://www.bookey.site/mandragora/
+- Next.js 14 (App Router) + TypeScript
+- Supabase (Postgres 저장 + 실시간 반영)
+- 효과음은 파일 없이 브라우저에서 합성 (Web Audio)
 
-- 1~280자의 속마음·응원·엉뚱한 생각을 심습니다.
-- 10초가 지나면 다른 농부가 수확할 수 있습니다. 심은 사람은 자기 식물을 뽑을 수 없습니다.
-- 수확 전 공개 API에는 내용이나 작성자 식별자가 포함되지 않습니다.
-- 서버의 SQLite 트랜잭션으로 한 만드라고라를 한 농부에게만 전달합니다. 같은 수확의 재요청은 같은 결과를 반환합니다.
-- 내가 심은 말과 수확 바구니는 이 브라우저의 익명 쿠키로 연결됩니다. 쿠키 삭제·다른 기기에서는 복구할 수 없습니다.
-- 받은 말에 마음을 전하거나 신고해서 내 바구니에서 숨길 수 있습니다. 신고 내용은 DB에 보관되며 자동 판정이나 운영자 검토 UI는 아직 없습니다.
-- 로그인·음성 녹음·샘플 메시지는 없습니다. 실제로 심은 말만 농장에 나타납니다.
+## 구조
 
-## 실행과 검증
-
-Python 3.11 이상. 운영 API는 Gunicorn, Nginx, SQLite WAL을 사용합니다. 프런트는 빌드 없는 HTML/CSS/JS입니다. 캐릭터와 풍경은 코드로 그린 원본 SVG 픽셀 아트입니다.
-
-```sh
-python3 test/serve.py
-# http://127.0.0.1:8322/mandragora/
-python3 -m unittest discover -s test -p 'test_*.py' -v
+```
+app/
+  page.tsx               화면 마크업 + Supabase 연결 (읽기/실시간/저장 API 호출)
+  layout.tsx             폰트, 메타데이터
+  globals.css            전체 스타일
+  api/mandrakes/route.ts 말 저장 API (길이·욕설 검사, IP당 30초 제한, service role로 insert)
+lib/
+  engine.js              밭 배치, 뽑기/버둥거림, 잎 생성, 사운드, 입력 처리
+  badwords.js            욕설 목록 필터 (화면과 API가 함께 사용)
+  supabase.ts            브라우저용(읽기 전용) / 서버용 클라이언트
+public/sprites/          만드라고라 몸통 이미지 10종
+supabase/
+  schema.sql             테이블, RLS(읽기만 공개), 실시간 설정
+  seed.sql               기본 문장 70개
 ```
 
-## 배포
+## 로컬에서 실행하기
 
-부키 서버의 독립 systemd 서비스 `mandragora`, 포트 `127.0.0.1:3211`, 전용 사용자 `mandragora`를 사용합니다. DB는 `/var/lib/mandragora/farm.sqlite3`, 릴리스는 `/opt/mandragora/releases/<SHA>`, 현재 릴리스는 `/opt/mandragora/current`입니다. Nginx `/mandragora/` 경로만 추가합니다.
+1. [Supabase](https://supabase.com)에서 새 프로젝트를 만듭니다.
+2. Supabase 대시보드 > SQL Editor에서 `supabase/schema.sql`을 실행한 뒤 `supabase/seed.sql`을 실행합니다.
+3. `.env.local.example`을 `.env.local`로 복사하고 값을 채웁니다.
+   - `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`: Project Settings > API
+   - `SUPABASE_SERVICE_ROLE_KEY`: 같은 화면의 service_role 키 (서버에서만 사용, 공개 금지)
+4. 실행합니다.
+   ```bash
+   npm install
+   npm run dev
+   ```
+   http://localhost:3000 에서 확인할 수 있습니다.
 
-Git 커밋을 `git archive --format=tar.gz HEAD`로 내보내 업로드하고, 같은 커밋의 `infra/deploy-bookey.sh <archive> <SHA>`를 root로 실행합니다. Nginx·DB 백업, API 상태 확인, 실패 시 기존 경로·릴리스 복원 절차를 포함합니다. `mandragora-backup.timer`가 같은 서버 디스크에 매일 SQLite 스냅샷을 만듭니다. 외부 백업은 별도입니다.
+## 배포할 때
 
-```sh
-sudo systemctl status mandragora
-sudo journalctl -u mandragora -n 50
-curl --fail https://www.bookey.site/mandragora/api/health
-```
+Node.js를 돌릴 수 있는 곳이면 어디든 됩니다 (Vercel, Netlify, 자체 서버 등).
+위 3개의 환경변수를 배포 환경에도 똑같이 넣어주세요.
+
+## 참고
+
+- 브라우저는 anon 키로 **읽기만** 할 수 있고, 저장은 `/api/mandrakes`를 거쳐서만 됩니다.
+  그래서 욕설 필터와 글자 수 제한을 우회할 수 없습니다.
+- 30초 입력 제한은 서버 메모리 기준이라, 서버리스 환경에서는 인스턴스마다 따로 셉니다.
+  더 엄격하게 막으려면 Supabase 테이블이나 Redis 등에 기록하는 방식으로 바꾸면 됩니다.
+- 만드라고라 몸통 이미지를 바꾸려면 `public/sprites/`의 파일을 교체하고,
+  `lib/engine.js`의 `BODIES` 목록을 맞춰주세요. 이미지는 360×600 투명 PNG/WebP,
+  정수리(잎이 붙는 곳)가 위에서 208px 지점 가운데에 오도록 맞추면 됩니다.
