@@ -9,15 +9,43 @@ type Row = { id: string; text: string };
 export default function Home() {
   useEffect(() => {
     const sb = getBrowserClient();
+    const endpoint = `${process.env.NEXT_PUBLIC_BASE_PATH || ""}/api/mandrakes/`;
+    const seen = new Set<string>();
+    async function loadLocal(): Promise<Row[]> {
+      const response = await fetch(endpoint, { cache: "no-store" });
+      if (!response.ok) throw new Error("Failed to load messages");
+      return response.json();
+    }
     const api = {
       async load(): Promise<Row[]> {
-        if (!sb) throw new Error("Supabase env vars are missing");
+        if (!sb) {
+          const rows = await loadLocal();
+          rows.forEach(row => seen.add(row.id));
+          return rows;
+        }
         const { data, error } = await sb.from("mandrakes").select("id, text").order("created_at", { ascending: false }).limit(1000);
         if (error) throw error;
         return data ?? [];
       },
       subscribe(cb: (row: Row) => void) {
-        if (!sb) return () => {};
+        if (!sb) {
+          let stopped = false;
+          let loading = false;
+          const poll = async () => {
+            if (stopped || loading || document.hidden) return;
+            loading = true;
+            try {
+              const rows = await loadLocal();
+              if (stopped) return;
+              for (const row of rows) if (!seen.has(row.id)) { seen.add(row.id); cb(row); }
+              seen.clear();
+              rows.forEach(row => seen.add(row.id));
+            } catch { /* Keep the current field visible during temporary outages. */ }
+            finally { loading = false; }
+          };
+          const timer = setInterval(poll, 5000);
+          return () => { stopped = true; clearInterval(timer); };
+        }
         const ch = sb
           .channel("mandrakes-inserts")
           .on("postgres_changes", { event: "INSERT", schema: "public", table: "mandrakes" }, payload => cb(payload.new as Row))
@@ -25,7 +53,7 @@ export default function Home() {
         return () => { sb.removeChannel(ch); };
       },
       async plant(text: string) {
-        const res = await fetch("/api/mandrakes", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text }) });
+        const res = await fetch(endpoint, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text }) });
         if (res.ok) return { ok: true };
         const j = await res.json().catch(() => ({}));
         return { ok: false, code: j.code, message: j.message };

@@ -1,6 +1,24 @@
 import { NextResponse } from "next/server";
 import { badWord } from "@/lib/badwords";
 import { getServerClient } from "@/lib/supabase";
+import { listMessages, saveMessage } from "@/lib/messages";
+
+export const dynamic = "force-dynamic";
+
+export async function GET() {
+  try {
+    const db = getServerClient();
+    if (db) {
+      const { data, error } = await db.from("mandrakes").select("id, text").order("created_at", { ascending: false }).limit(1000);
+      if (error) throw error;
+      return NextResponse.json(data, { headers: { "Cache-Control": "no-store" } });
+    }
+    return NextResponse.json(listMessages(), { headers: { "Cache-Control": "no-store" } });
+  } catch (error) {
+    console.error("Failed to load mandrakes", error);
+    return NextResponse.json({ message: "불러오다 문제가 생겼어요." }, { status: 503 });
+  }
+}
 
 const MAX = 100;
 const COOLDOWN_MS = 30_000;
@@ -26,7 +44,16 @@ export async function POST(req: Request) {
   }
 
   const db = getServerClient();
-  if (!db) return NextResponse.json({ code: "config", message: "서버 설정이 아직 안 됐어요." }, { status: 500 });
+  if (!db) {
+    try {
+      const result = saveMessage(text, ip);
+      if ("wait" in result) return NextResponse.json({ code: "rate", message: `${result.wait}초 뒤에 다시 입력할 수 있어요.` }, { status: 429 });
+      return NextResponse.json(result.row, { status: 201 });
+    } catch (error) {
+      console.error("Failed to save mandrake", error);
+      return NextResponse.json({ code: "db", message: "저장하다 문제가 생겼어요. 잠시 뒤 다시 입력해 주세요." }, { status: 503 });
+    }
+  }
   const { data, error } = await db.from("mandrakes").insert({ text }).select("id, text").single();
   if (error) return NextResponse.json({ code: "db", message: "저장하다 문제가 생겼어요. 잠시 뒤 다시 입력해 주세요." }, { status: 500 });
 

@@ -1,0 +1,66 @@
+name: Deploy Mandragora
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mandragora-production
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 15
+    env:
+      NEXT_PUBLIC_BASE_PATH: /mandragora
+      NEXT_TELEMETRY_DISABLED: 1
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm run build
+      - name: Package standalone application
+        run: |
+          mkdir -p .next/standalone/.next
+          cp -r .next/static .next/standalone/.next/static
+          cp -r public .next/standalone/public
+          cp -r infra .next/standalone/infra
+          node infra/smoke.mjs
+          tar -czf /tmp/mandragora.tgz -C .next/standalone .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mandragora-${{ github.sha }}
+          path: /tmp/mandragora.tgz
+          retention-days: 7
+
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: [self-hosted, Linux, ARM64, mandragora-prod]
+    timeout-minutes: 10
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: mandragora-${{ github.sha }}
+          path: ${{ runner.temp }}/mandragora
+      - name: Deploy and check health
+        env:
+          RELEASE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          PACKAGE="$RUNNER_TEMP/mandragora/mandragora.tgz"
+          DEPLOY_SCRIPT="$RUNNER_TEMP/mandragora/deploy.sh"
+          tar -xOf "$PACKAGE" ./infra/deploy.sh > "$DEPLOY_SCRIPT"
+          sudo bash "$DEPLOY_SCRIPT" "$PACKAGE" "$RELEASE_SHA"
+      - name: Verify public site
+        run: curl --fail --retry 5 --retry-delay 3 https://www.bookey.site/mandragora/api/health/

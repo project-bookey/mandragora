@@ -1,0 +1,32 @@
+[Unit]
+Description=Mandragora shared message garden
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=mandragora
+Group=mandragora
+WorkingDirectory=/opt/mandragora/current
+Environment=NODE_ENV=production
+Environment=HOSTNAME=127.0.0.1
+Environment=PORT=3211
+Environment=NEXT_TELEMETRY_DISABLED=1
+Environment=MANDRAGORA_MESSAGES_DB=/var/lib/mandragora/messages.sqlite3
+EnvironmentFile=-/etc/mandragora.env
+ExecStart=/opt/mandragora/node/bin/node server.js
+Restart=on-failure
+RestartSec=3
+StateDirectory=mandragora
+StateDirectoryMode=0700
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/mandragora
+MemoryMax=256M
+CPUQuota=75%
+
+[Install]
+WantedBy=multi-user.target

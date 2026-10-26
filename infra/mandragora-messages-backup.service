@@ -1,0 +1,14 @@
+[Unit]
+Description=Mandragora message database snapshot
+ConditionPathExists=/var/lib/mandragora/messages.sqlite3
+
+[Service]
+Type=oneshot
+User=mandragora
+Group=mandragora
+ExecStart=/usr/bin/python3 /opt/mandragora/current/infra/backup.py
+UMask=0077
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/mandragora
