@@ -45,7 +45,7 @@ systemctl daemon-reload
 systemctl restart mandragora
 curl --fail --silent --show-error --retry 20 --retry-connrefused --retry-delay 2 http://127.0.0.1:3211/mandragora/api/health/
 systemctl reload nginx
-curl --fail --silent --show-error --resolve www.bookey.site:443:127.0.0.1 https://www.bookey.site/mandragora/api/health/
+curl --fail --silent --show-error --retry 10 --retry-all-errors --retry-delay 1 --resolve www.bookey.site:443:127.0.0.1 https://www.bookey.site/mandragora/api/health/
 install -m 644 "$RELEASE/infra/mandragora-messages-backup.service" /etc/systemd/system/mandragora-messages-backup.service
 install -m 644 "$RELEASE/infra/mandragora-messages-backup.timer" /etc/systemd/system/mandragora-messages-backup.timer
 systemctl daemon-reload
