@@ -1,5 +1,6 @@
 """Create a consistent SQLite snapshot; keep fourteen daily backups."""
 import os
+from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path
 import sqlite3
@@ -10,7 +11,7 @@ target_dir = source.parent / "message-backups"
 target_dir.mkdir(mode=0o700, exist_ok=True)
 target = target_dir / (datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ") + ".sqlite3")
 temporary = target.with_suffix(".tmp")
-with sqlite3.connect(f"file:{source}?mode=ro", uri=True) as src, sqlite3.connect(temporary) as dst:
+with closing(sqlite3.connect(f"file:{source}?mode=ro", uri=True)) as src, closing(sqlite3.connect(temporary)) as dst:
     src.backup(dst)
     if dst.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
         raise RuntimeError("Backup integrity check failed")
