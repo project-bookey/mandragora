@@ -1,0 +1,10 @@
+[Unit]
+Description=Check Mandragora message supply every fifteen minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=15min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

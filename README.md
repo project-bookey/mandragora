@@ -21,10 +21,12 @@ lib/
   badwords.js            욕설 목록 필터 (화면과 API가 함께 사용)
   supabase.ts            브라우저용(읽기 전용) / 서버용 클라이언트
   messages.ts            SQLite 저장소, 재시작 후에도 유지되는 30초 입력 제한
+  message-store.mjs      저장소 초기화, 기존 기본 문구 제거 마이그레이션
+infra/
+  generate-messages.mjs  Groq AI 문구 보충 (30개 미만이면 50개까지)
 public/sprites/          만드라고라 몸통 이미지 10종
 supabase/
   schema.sql             테이블, RLS(읽기만 공개), 실시간 설정
-  seed.sql               기본 문장 70개
 ```
 
 ## 로컬에서 실행하기
@@ -37,12 +39,19 @@ npm run dev
 ```
 
 http://localhost:3000 에서 확인할 수 있습니다. 문장은 `.data/messages.sqlite3`에 저장됩니다.
-원본 기본 문장 70개는 최초 생성 때만 넣습니다. `MANDRAGORA_MESSAGES_DB`로 DB 경로를 바꿀 수 있습니다.
+기본 문구는 넣지 않습니다. 기존 설치의 기본 문구 70개만 제거하고 방문자가 남긴 문장은 보존합니다.
+`MANDRAGORA_MESSAGES_DB`로 DB 경로를 바꿀 수 있습니다.
+
+문구를 AI로 보충하려면 `GROQ_API_KEY`를 환경변수로 설정하고
+`node infra/generate-messages.mjs`를 실행합니다. 기본 모델은 `qwen/qwen3.8-27b`이며
+`GROQ_MODEL`로 바꿀 수 있습니다. 문구가 30개 미만일 때 50개까지 보충하며,
+실패를 포함해 최소 1시간 간격으로 실행하고 실행당 API 요청은 최대 3회입니다.
+중복·금칙어·길이를 검사한 뒤 저장하며 방문자 문구는 AI에 전송하지 않습니다.
 
 ### Supabase를 사용하는 경우
 
 1. [Supabase](https://supabase.com)에서 새 프로젝트를 만듭니다.
-2. Supabase 대시보드 > SQL Editor에서 `supabase/schema.sql`을 실행한 뒤 `supabase/seed.sql`을 실행합니다.
+2. Supabase 대시보드 > SQL Editor에서 `supabase/schema.sql`을 실행합니다.
 3. `env.example`을 `.env.local`로 복사하고 세 Supabase 값을 모두 채웁니다.
    - `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`: Project Settings > API
    - `SUPABASE_SERVICE_ROLE_KEY`: 같은 화면의 service_role 키 (서버에서만 사용, 공개 금지)
@@ -66,6 +75,10 @@ http://localhost:3000 에서 확인할 수 있습니다. 문장은 `.data/messag
 - 문장 DB: `/var/lib/mandragora/messages.sqlite3` (재배포와 독립)
 - 백업: `mandragora-messages-backup.timer`가 매일 SQLite 스냅샷 생성, 최근 14개 보관
 - 백업 위치: `/var/lib/mandragora/message-backups/` (같은 서버 디스크)
+- AI 보충: `mandragora-generate.timer`가 15분마다 SQLite 문구 잔량을 확인합니다.
+- AI 설정: `/etc/mandragora-ai.env`에 `GROQ_API_KEY`, `GROQ_MODEL`을 저장합니다 (root 소유, 권한 600).
+- 부키 AI와 같은 Groq 키·모델을 사용하며 AI 제공자의 사용 한도를 공유합니다.
+- 자동 AI 보충은 SQLite 저장소에서 동작합니다.
 - `/mandragora/` 경로만 Nginx로 프록시합니다. 다른 서비스는 기존 구성을 사용합니다.
 - 배포 중 상태 확인이 실패하면 이전 릴리스·systemd·Nginx 설정으로 복원합니다.
 - 기존 농장 릴리스와 `/var/lib/mandragora/farm.sqlite3`, 농장 백업 작업은 보존합니다.

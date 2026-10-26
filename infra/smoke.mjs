@@ -46,7 +46,7 @@ try {
   assert.equal((await fetch(`${root}/`)).status, 200, "subpath page must render without redirect loops");
   assert.equal((await fetch(`${root}/sprites/b_r1a.webp`)).status, 200, "sprite must load from subpath");
   const initial = await (await fetch(`${root}/api/mandrakes/`)).json();
-  assert.equal(initial.length, 70, "seed exactly once");
+  assert.equal(initial.length, 0, "new databases must not contain presets");
   const created = await post("배포 저장 검증", "192.0.2.1");
   assert.equal(created.status, 201);
   const row = await created.json();
@@ -58,10 +58,10 @@ try {
   await stop();
   await start();
   const restored = await (await fetch(`${root}/api/mandrakes/`)).json();
-  assert.equal(restored.length, 72);
+  assert.equal(restored.length, 2);
   assert.ok(restored.some(item => item.id === row.id && item.text === row.text), "message survives restart");
   assert.equal((await post("재시작 우회", "192.0.2.1")).status, 429, "cooldown survives restart");
-  console.log("Smoke checks passed: subpath, sprites, seeds, writes, validation, concurrent cooldown, restart persistence.");
+  console.log("Smoke checks passed: subpath, sprites, empty initial store, writes, validation, concurrent cooldown, restart persistence.");
 } catch (error) {
   console.error(output);
   throw error;

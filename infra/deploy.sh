@@ -9,10 +9,17 @@ APP=/opt/mandragora
 RELEASE="$APP/releases/$SHA"
 NODE="$APP/node/bin/node"
 test -x "$NODE"
+test -s /etc/mandragora-ai.env
 BACKUP=$(mktemp -d "$APP/deploy-backup.XXXXXX")
 PREVIOUS=$(readlink -f "$APP/current")
 cp /etc/systemd/system/mandragora.service "$BACKUP/mandragora.service"
 cp /etc/nginx/snippets/mandragora.locations.conf "$BACKUP/mandragora.locations.conf"
+for unit in mandragora-generate.service mandragora-generate.timer; do
+  if [ -f "/etc/systemd/system/$unit" ]; then
+    cp "/etc/systemd/system/$unit" "$BACKUP/$unit"
+  fi
+done
+GENERATOR_WAS_ACTIVE=$(systemctl is-active mandragora-generate.timer || true)
 printf '%s\n' "$PREVIOUS" > "$BACKUP/previous-release"
 # Keep the old farm's independent snapshots working after current points to Next.js.
 if [ -f "$PREVIOUS/server/backup.py" ]; then
@@ -23,15 +30,32 @@ fi
 
 rollback() {
   trap - ERR
+  systemctl stop mandragora-generate.timer mandragora-generate.service || true
+  for unit in mandragora-generate.service mandragora-generate.timer; do
+    if [ -f "$BACKUP/$unit" ]; then
+      cp "$BACKUP/$unit" "/etc/systemd/system/$unit"
+    else
+      systemctl disable "$unit" || true
+      rm -f "/etc/systemd/system/$unit"
+    fi
+  done
   ln -sfn "$PREVIOUS" "$APP/current"
   cp "$BACKUP/mandragora.service" /etc/systemd/system/mandragora.service
   cp "$BACKUP/mandragora.locations.conf" /etc/nginx/snippets/mandragora.locations.conf
   systemctl daemon-reload
   systemctl restart mandragora
+  if [ "$GENERATOR_WAS_ACTIVE" = active ]; then
+    systemctl start mandragora-generate.timer
+  fi
   nginx -t && systemctl reload nginx
   echo "Deployment failed; restored $PREVIOUS" >&2
 }
 trap rollback ERR
+systemctl stop mandragora-generate.timer mandragora-generate.service 2>/dev/null || true
+
+if [ -f /var/lib/mandragora/messages.sqlite3 ]; then
+  systemctl start mandragora-messages-backup.service
+fi
 
 mkdir -p "$RELEASE"
 tar -xzf "$PACKAGE" -C "$RELEASE"
@@ -51,5 +75,10 @@ install -m 644 "$RELEASE/infra/mandragora-messages-backup.timer" /etc/systemd/sy
 systemctl daemon-reload
 systemctl enable --now mandragora-messages-backup.timer
 systemctl start mandragora-messages-backup.service
+install -m 644 "$RELEASE/infra/mandragora-generate.service" /etc/systemd/system/mandragora-generate.service
+install -m 644 "$RELEASE/infra/mandragora-generate.timer" /etc/systemd/system/mandragora-generate.timer
+systemctl daemon-reload
+systemctl enable --now mandragora-generate.timer
+systemctl start mandragora-generate.service
 trap - ERR
 echo "Deployed $SHA; rollback backup: $BACKUP"
