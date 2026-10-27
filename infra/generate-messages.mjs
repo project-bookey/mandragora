@@ -6,21 +6,38 @@ import { badWord } from "../lib/badwords.js";
 
 const normalize = value => value.normalize("NFC").replace(/\s+/g, " ").trim();
 
-const voice = `한국어 익명 놀이터에서 사람이 툭 남길 법한 짧은 혼잣말을 쓴다. 만드라고라를 뽑으면 이 말이 말풍선에 뜬다.
-자연스러운 한국어 구어체가 최우선이다. 소리 내 읽었을 때 친구가 실제로 할 법한 말만 남긴다.
-한 문장은 5~40자, 한 가지 생각만 담는다. 대체로 10~25자 정도로 짧게 쓴다.
-배고픔, 늦잠, 귀찮음, 딴생각, 사소한 발견, 별일 없는 하루 등 구체적인 일상을 골고루 쓴다. 담백한 말과 살짝 웃긴 말을 섞고 모든 말을 농담으로 만들려 하지 않는다.
-자연스러운 말투 예시: '아까 뭐 하려고 했더라', '분명 한 입만 먹으려고 했는데', '지금 누우면 못 일어날 것 같아'. 예시는 복사하거나 단어만 바꿔 쓰지 않는다.
-어색한 말 예시: '뿌리가 퇴근을 선언했다', '오늘도 광합성 플렉스', '흙 이불 속 행복 충전 완료'. 이런 의인화, 유행어 끼워넣기, 광고 문구 같은 표현을 피한다.
-뿌리·잎·흙·광합성·만드라고라를 소재로 삼지 않는다. 번역투, 문어체, 억지 비유, 뜬금없는 단어 조합, 과한 감탄사, 이모지, 해시태그를 쓰지 않는다.
-같은 문장 구조나 끝맺음, 소재를 반복하지 않는다. 조언, 명언, 뻔한 위로, 상대에게 하는 평가도 피한다.
-욕설, 혐오, 성적 표현, 개인정보, 광고, 정치, 자해, 상대 비하를 넣지 않는다.
-설명, 번호, 따옴표 장식, AI 언급 없이 JSON 객체의 messages 배열로만 응답한다. 출력 전에 각 문장을 읽고 어색한 문장은 평범한 일상 말로 다시 쓴다.`;
+const voice = `한국인이 익명 게시판에 남기는 짧은 한마디를 새로 쓴다.
+실제 대화에서 자연스럽게 쓸 법한 한국어 구어체로, 한 문장에 5~40자만 쓴다.
+만들어낸 상황을 설명하거나 일기를 요약하지 말고 말 한마디 자체를 쓴다.
+사소한 경험, 문득 든 생각, 짧은 반응 등 서로 다른 상황을 고른다. 모든 말을 웃기게 만들 필요는 없다.
+뿌리, 잎, 흙, 광합성, 만드라고라 소재와 억지 의인화는 쓰지 않는다.
+번역투, 어색한 비유, 광고 같은 표현, 명언, 상투적인 위로, 유행어 억지 삽입은 쓰지 않는다.
+같은 소재와 문장 틀을 반복하거나 단어만 바꾼 문장을 여러 개 쓰지 않는다. 이전에 만든 문장을 재사용하지 말고 매번 상황부터 새로 고른다.
+한국어 외의 문자가 섞이지 않게 한다. 욕설, 혐오, 성적 표현, 개인정보, 광고, 정치, 자해, 상대 비하는 금지한다.
+설명, 번호, 따옴표 장식, 이모지, AI 언급 없이 JSON 객체의 messages 배열로만 응답한다.
+마지막에 각 문장을 소리 내 읽는다고 생각하고, 한국어 화자가 실제로 하지 않을 법한 표현은 버린다.`;
+
+const fingerprint = text => normalize(text).replace(/[^가-힣a-z0-9]/gi, "").toLowerCase();
+const grams = text => new Set(Array.from({ length: Math.max(0, text.length - 1) }, (_, i) => text.slice(i, i + 2)));
+
+// Reject punctuation changes and small rewrites, including retired AI text.
+export function repeatsMessage(text, previous) {
+  const a = fingerprint(text), ag = grams(a);
+  return previous.some(value => {
+    const b = fingerprint(value);
+    if (a === b) return true;
+    const bg = grams(b);
+    if (!ag.size || !bg.size) return false;
+    const overlap = [...ag].filter(part => bg.has(part)).length;
+    return 2 * overlap / (ag.size + bg.size) >= 0.7;
+  });
+}
 
 export function naturalMessage(value) {
   if (typeof value !== "string" || /[\r\n]/.test(value.trim())) return null;
   const text = normalize(value);
   if ([...text].length < 5 || [...text].length > 40 || badWord(text)) return null;
+  if (/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Extended_Pictographic}]/u.test(text)) return null;
   if (!/[가-힣]/.test(text) || /^(?:[-*#•]|\d+[.)]|["'“‘「『])/.test(text) || /https?:\/\/|www\.|```|(?:인공지능|언어 모델|AI로서)/i.test(text)) return null;
   return text;
 }
@@ -49,6 +66,8 @@ export async function replenish({
 
     const seen = new Set(db.prepare("SELECT text FROM messages").all().map(row => normalize(String(row.text))));
     const excluded = new Set(legacyPresets.map(normalize));
+    const previousAI = db.prepare("SELECT text FROM messages WHERE source IN ('ai', 'ai-legacy')").all().map(row => String(row.text));
+    const previous = [...previousAI, ...legacyPresets];
     let added = 0;
     // Three bounded requests at most per hour, including failed attempts.
     for (let attempt = 0; attempt < 3 && count() < target; attempt++) {
@@ -81,9 +100,10 @@ export async function replenish({
         for (const value of candidates) {
           if (count() >= target) break;
           const text = naturalMessage(value);
-          if (!text || seen.has(text) || excluded.has(text)) continue;
+          if (!text || seen.has(text) || excluded.has(text) || repeatsMessage(text, previous)) continue;
           insert.run(randomUUID(), text);
           seen.add(text);
+          previous.push(text);
           added++;
         }
         db.exec("COMMIT");
