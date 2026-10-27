@@ -79,6 +79,10 @@ install -m 644 "$RELEASE/infra/mandragora-generate.service" /etc/systemd/system/
 install -m 644 "$RELEASE/infra/mandragora-generate.timer" /etc/systemd/system/mandragora-generate.timer
 systemctl daemon-reload
 systemctl enable --now mandragora-generate.timer
-systemctl start mandragora-generate.service
+# An upstream AI quota/outage must not roll back a healthy application.
+# The timer retries generation with the generator's persisted cooldown.
+if ! systemctl start mandragora-generate.service; then
+  echo "AI replenishment is pending; mandragora-generate.timer will retry." >&2
+fi
 trap - ERR
 echo "Deployed $SHA; rollback backup: $BACKUP"
