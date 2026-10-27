@@ -1,15 +1,21 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { startMandragora } from "@/lib/engine";
 import { getBrowserClient } from "@/lib/supabase";
 
 type Row = { id: string; text: string };
 
 export default function Home() {
+  const [channel, setChannel] = useState(1);
+  const [live, setLive] = useState("연결 중…");
   useEffect(() => {
     const sb = getBrowserClient();
     const endpoint = `${process.env.NEXT_PUBLIC_BASE_PATH || ""}/api/mandrakes/`;
+    const client = crypto.randomUUID();
+    const pullsEndpoint = `${process.env.NEXT_PUBLIC_BASE_PATH || ""}/api/pulls/`;
+    const controller = new AbortController();
+    let stopped = false;
     const seen = new Set<string>();
     async function loadLocal(): Promise<Row[]> {
       const response = await fetch(endpoint, { cache: "no-store" });
@@ -52,6 +58,31 @@ export default function Home() {
           .subscribe();
         return () => { sb.removeChannel(ch); };
       },
+      async pull(pull: { text: string; seed: number; x: number; y: number }) {
+        const response = await fetch(pullsEndpoint, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...pull, client, channel }), signal: controller.signal });
+        if (!response.ok) throw new Error("Pull broadcast failed");
+      },
+      subscribePulls(cb: (event: { text: string; seed: number; x: number; y: number }) => void) {
+        let cursor: number | null = null;
+        let loading = false;
+        const poll = async () => {
+          if (stopped || loading || document.hidden) return;
+          loading = true;
+          try {
+            const response = await fetch(`${pullsEndpoint}?channel=${channel}${cursor === null ? "" : `&since=${cursor}`}`, { cache: "no-store", signal: controller.signal });
+            if (!response.ok) throw new Error("Live connection failed");
+            const data = await response.json();
+            if (stopped) return;
+            cursor = data.cursor;
+            for (const event of data.events) if (event.client !== client) cb(event);
+            setLive("실시간 연결됨");
+          } catch { if (!stopped) setLive("다시 연결 중…"); }
+          finally { loading = false; }
+        };
+        void poll();
+        const timer = setInterval(poll, 400);
+        return () => clearInterval(timer);
+      },
       async plant(text: string) {
         const res = await fetch(endpoint, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text }) });
         if (res.ok) return { ok: true };
@@ -59,8 +90,10 @@ export default function Home() {
         return { ok: false, code: j.code, message: j.message };
       },
     };
-    return startMandragora(api);
-  }, []);
+    setLive("연결 중…");
+    const cleanup = startMandragora(api);
+    return () => { stopped = true; controller.abort(); cleanup(); };
+  }, [channel]);
 
   return (
     <>
@@ -70,6 +103,15 @@ export default function Home() {
         <canvas id="fx" />
         <div className="status" id="status">불러오는 중…</div>
       </main>
+
+      <nav className="channels" aria-label="밭 채널">
+        <div className="channel-buttons">
+          {["동쪽", "서쪽", "남쪽", "북쪽"].map((name, index) => (
+            <button key={name} type="button" aria-pressed={channel === index + 1} onClick={() => setChannel(index + 1)}>{name} 밭</button>
+          ))}
+        </div>
+        <p role="status">{live} · 같은 밭의 뽑기가 함께 보여요</p>
+      </nav>
 
       <button className="mute" id="mute" type="button" aria-pressed="false" aria-label="소리 끄기">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">

@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { legacyPresets } from "../lib/legacy-presets.mjs";
 import { openMessageStore } from "../lib/message-store.mjs";
-import { replenish } from "./generate-messages.mjs";
+import { naturalMessage, replenish } from "./generate-messages.mjs";
 
 async function fixture(t) {
   const dir = await mkdtemp(join(tmpdir(), "mandragora-generation-"));
@@ -41,6 +41,31 @@ test("30 messages suppress all AI calls", async t => {
   fill(path,30);
   const result = await replenish({path,fetcher:()=>{throw new Error("must not call AI");}});
   assert.equal(result.status,"skipped");
+});
+
+test("retire old AI messages without deleting visitor text or newly generated AI", async t => {
+  const path = await fixture(t);
+  const db = openMessageStore(path);
+  db.prepare("INSERT INTO messages (id,text,source) VALUES ('old-ai','뿌리가 퇴근을 선언했다','ai')").run();
+  db.prepare("INSERT INTO messages (id,text,source) VALUES ('visitor','뿌리가 퇴근을 선언했다','user')").run();
+  db.prepare("DELETE FROM metadata WHERE key = 'ai-natural-v2'").run();
+  db.close();
+  const migrated = openMessageStore(path);
+  assert.equal(migrated.prepare("SELECT source FROM messages WHERE id='old-ai'").get().source, "ai-legacy");
+  assert.equal(migrated.prepare("SELECT source FROM messages WHERE id='visitor'").get().source, "user");
+  migrated.prepare("INSERT INTO messages (id,text,source) VALUES ('new-ai','아까 뭐 하려고 했더라','ai')").run();
+  migrated.close();
+  const reopened = openMessageStore(path);
+  assert.equal(reopened.prepare("SELECT source FROM messages WHERE id='new-ai'").get().source, "ai");
+  assert.equal(reopened.prepare("SELECT count(*) AS n FROM messages").get().n, 3);
+  reopened.close();
+});
+
+test("AI output validation rejects formatted, multiline, non-Korean and long responses", () => {
+  assert.equal(naturalMessage("  분명 한 입만 먹으려고 했는데  "), "분명 한 입만 먹으려고 했는데");
+  for (const value of ["1. 오늘은 좀 쉬고 싶다", '"오늘은 좀 쉬고 싶다"', "# 오늘은 좀 쉬고 싶다", "오늘은 쉬고\n내일 일하자", "just five more minutes", "가".repeat(41), "AI로서 답변을 드립니다", 42]) {
+    assert.equal(naturalMessage(value), null, String(value));
+  }
 });
 
 test("29 messages replenish to 50 and preserve all visitor messages", async t => {

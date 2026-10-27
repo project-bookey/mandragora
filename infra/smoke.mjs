@@ -50,6 +50,22 @@ try {
   const created = await post("배포 저장 검증", "192.0.2.1");
   assert.equal(created.status, 201);
   const row = await created.json();
+  const live = channel => fetch(`${root}/api/pulls/?channel=${channel}`).then(r => r.json());
+  const cursor = (await live(1)).cursor;
+  const pull = { client: "00000000-0000-4000-8000-000000000001", channel: 1, text: row.text, seed: 123, x: 0.5, y: 0.5 };
+  const publish = (body, ip = "192.0.2.10") => fetch(`${root}/api/pulls/`, { method: "POST", headers: { "content-type": "application/json", "x-forwarded-for": ip }, body: JSON.stringify(body) });
+  assert.equal((await publish(pull)).status, 201);
+  const shared = await (await fetch(`${root}/api/pulls/?channel=1&since=${cursor}`)).json();
+  assert.equal(shared.events.length, 1, "other visitors receive the pull");
+  assert.equal(shared.events[0].seed, pull.seed, "appearance is shared");
+  assert.equal(shared.events[0].text, row.text);
+  assert.equal((await (await fetch(`${root}/api/pulls/?channel=2&since=${cursor}`)).json()).events.length, 0, "channels are isolated");
+  assert.equal((await live(1)).events.length, 0, "joining does not replay old pulls");
+  assert.equal((await publish(pull)).status, 429);
+  assert.equal((await publish({ ...pull, text: "저장되지 않은 말" }, "192.0.2.11")).status, 400);
+  assert.equal((await publish({ ...pull, channel: 5 })).status, 400);
+  assert.equal((await publish({ ...pull, x: 2 })).status, 400);
+  assert.equal((await fetch(`${root}/api/pulls/?channel=1&since=no`)).status, 400);
   assert.equal((await post("중복 입력", "192.0.2.1")).status, 429);
   assert.equal((await post("", "192.0.2.2")).status, 400);
   assert.equal((await post("가".repeat(101), "192.0.2.2")).status, 400);
@@ -61,7 +77,7 @@ try {
   assert.equal(restored.length, 2);
   assert.ok(restored.some(item => item.id === row.id && item.text === row.text), "message survives restart");
   assert.equal((await post("재시작 우회", "192.0.2.1")).status, 429, "cooldown survives restart");
-  console.log("Smoke checks passed: subpath, sprites, empty initial store, writes, validation, concurrent cooldown, restart persistence.");
+  console.log("Smoke checks passed: subpath, sprites, writes, validation, cooldown, restart persistence, live pulls, channel isolation, appearance, no replay, pull validation.");
 } catch (error) {
   console.error(output);
   throw error;

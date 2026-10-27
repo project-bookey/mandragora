@@ -110,3 +110,18 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);over
   .scene.shake{animation:none}
   .plot.sprout .lift{animation-duration:.01s}
 }
+
+.channels{position:fixed;z-index:3500;top:calc(16px + env(safe-area-inset-top,0px));left:16px;max-width:calc(100vw - 80px)}
+.channel-buttons{display:flex;gap:4px;padding:4px;border:1px solid var(--line);border-radius:14px;background:#fff}
+.channel-buttons button{border:0;border-radius:10px;background:transparent;color:var(--dim);font:inherit;font-size:13px;padding:9px 12px;cursor:pointer;white-space:nowrap}
+.channel-buttons button[aria-pressed="true"]{background:#eaf1e4;color:#36552e;font-weight:700}
+.channel-buttons button:focus-visible{outline:2px solid var(--ink);outline-offset:1px}
+.channels p{margin:8px 4px;color:var(--dim);font-size:11px;line-height:1.5}
+.remote-pull{position:absolute;z-index:2200;pointer-events:none;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;animation:remote-arrive 3.2s ease-out both}
+.remote-message{background:white;border:1px solid #bfd1b5;border-radius:14px;padding:10px 14px;box-shadow:0 5px 18px #0000000d;width:max-content;max-width:min(220px,60vw);overflow-wrap:anywhere;font-size:14px;line-height:1.5}
+.remote-message small{display:block;color:#648159;font-size:10px;margin-bottom:4px}
+.remote-root{position:relative;width:72px;height:120px;margin-top:4px;animation:flail .16s ease-in-out infinite alternate;transform-origin:50% 35%}
+.remote-root .mdk{width:100%;height:100%}
+@keyframes remote-arrive{0%{opacity:0;translate:0 36px}12%,85%{opacity:1;translate:0 0}100%{opacity:0;translate:0 -12px}}
+@media(max-width:400px){.channel-buttons button{padding:9px 7px;font-size:12px}}
+@media(prefers-reduced-motion:reduce){.remote-pull,.remote-root{animation:none}}
